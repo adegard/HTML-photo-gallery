@@ -1370,20 +1370,18 @@ function parsePath(relPath){
   let year=0,month=0;
   for(let i=0;i<segs.length-1;i++){
     const s=segs[i];
-    /* YYYY-MM folder — highest confidence */
-    const mm=s.match(/^(\d{4})-(\d{2})$/);
+    /* YYYY-MM or YYYY-M folder */
+    const mm=s.match(/^(\d{4})-(\d{1,2})$/);
     if(mm){year=parseInt(mm[1],10);month=parseInt(mm[2],10);break;}
   }
-  /* Fallback: find year first, then month in next segment */
   if(!year){
     for(let i=0;i<segs.length-1;i++){
       if(/^\d{4}$/.test(segs[i])){year=parseInt(segs[i],10);
-        /* Look for MM or YYYY-MM in the very next segment */
         if(i+1<segs.length-1){
           const nxt=segs[i+1];
-          const nm=nxt.match(/^(\d{4})-(\d{2})$/);
+          const nm=nxt.match(/^(\d{4})-(\d{1,2})$/);
           if(nm)month=parseInt(nm[2],10);
-          else if(/^\d{2}$/.test(nxt)){const v=parseInt(nxt,10);if(v>=1&&v<=12)month=v;}
+          else if(/^\d{1,2}$/.test(nxt)){const v=parseInt(nxt,10);if(v>=1&&v<=12)month=v;}
         }
         break;
       }
@@ -1416,15 +1414,12 @@ async function scanFileListAsync(files,onProgress){
 async function incrementalScan(files){
   const oldMeta=meta.length?[...meta]:[];
   const oldPaths=new Set(oldMeta.map(m=>m.path));
-  showProgress('Reading folder…');
-  updateProgress(0,`Scanning ${files.length} files…`);
-  await new Promise(r=>setTimeout(r,60));
 
   const{newMeta,fileMap}=await scanFileListAsync(files,(pct,detail)=>{
     updateProgress(pct,detail);
   });
 
-  updateProgress(100,`${newMeta.length} photos found`);
+  updateProgress(100,`${newMeta.length} photos found — processing…`);
   await new Promise(r=>setTimeout(r,300));
 
   /* Build fileMap for allPhotos */
@@ -1497,11 +1492,12 @@ document.getElementById('pickRoot').onclick=async()=>{
 document.getElementById('folderInput').onchange=e=>{
   const files=e.target.files;
   if(!files||!files.length)return;
-  incrementalScan(files);
-  // Replace loadImage with mobile version since we have file objects
+  /* Show progress bar NOW, then yield to browser so it can paint */
+  showProgress('Reading folder…');
+  updateProgress(0,`Scanning ${files.length} files…`);
+  /* Replace loadImage with mobile version since we have file objects */
   if(!hasFSA){
     window.loadImage=loadImageMobile;
-    // Also override lightbox image loading
     window.showLightboxPhoto=async function(){
       const p=visibleList[overlayIndex];
       if(!p)return;
@@ -1525,6 +1521,8 @@ document.getElementById('folderInput').onchange=e=>{
       }
     };
   }
+  /* Start scan AFTER handler returns so browser paints the progress bar */
+  setTimeout(()=>incrementalScan(files),80);
 };
 
 /* ── RECONNECT ── */
