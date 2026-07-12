@@ -456,6 +456,13 @@
   /* ── DELETED VISUAL ── */
   .item.deleting { animation: fadeOut .3s forwards; }
   @keyframes fadeOut { to { opacity: 0; transform: scale(.85); } }
+
+  /* ── TOUCH DEVICES ── */
+  @media (hover: none) and (pointer: coarse) {
+    .item .fav-btn { opacity: 1; }
+    .item .del-btn { display: flex !important; }
+    .hbtn, .obtn { min-height: 44px; }
+  }
 </style>
 </head>
 <body>
@@ -562,6 +569,9 @@
   <h3>📊 Gallery Stats</h3>
   <div id="statsContent"></div>
 </div>
+
+<!-- Hidden file input for mobile fallback -->
+<input type="file" id="folderInput" webkitdirectory multiple style="display:none">
 
 <!-- Toast -->
 <div id="toast"></div>
@@ -719,6 +729,7 @@ async function incrementalUpdate(handle){
 
 /* ── LOAD IMAGE ── */
 async function loadImage(img,photo){
+  if(photo.file){img.src=URL.createObjectURL(photo.file);applyRotation(img,photo.path);putCachedThumb(photo.path,photo.file);return;}
   const cached=await getCachedThumb(photo.path);
   if(cached){applyRotation(img,photo.path);img.src=cached;return;}
   if(!photo.handle)await ensureMonthScanned(photo.year,photo.month);
@@ -920,6 +931,7 @@ async function showLightboxPhoto(){
   overlayRot.style.display=deg?'inline':'none';
   overlayRot.textContent=deg+'°';
 
+  if(p.file){overlayImg.src=URL.createObjectURL(p.file);return;}
   const cached=await getCachedThumb(p.path);
   if(cached){overlayImg.src=cached;return;}
   if(!p.handle)await ensureMonthScanned(p.year,p.month);
@@ -947,6 +959,26 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='f'||e.key==='F')document.getElementById('oFav').click();
   else if(e.key==='Delete')document.getElementById('oDelete').click();
 });
+
+// Touch swipe navigation for lightbox
+let touchStartX=0,touchStartY=0,touchSwiping=false;
+const overlayImgWrap=document.getElementById('overlayImgWrap');
+overlayImgWrap.addEventListener('touchstart',e=>{
+  if(e.touches.length!==1)return;
+  touchStartX=e.touches[0].clientX;
+  touchStartY=e.touches[0].clientY;
+  touchSwiping=true;
+},{passive:true});
+overlayImgWrap.addEventListener('touchend',e=>{
+  if(!touchSwiping)return;
+  touchSwiping=false;
+  const dx=e.changedTouches[0].clientX-touchStartX;
+  const dy=e.changedTouches[0].clientY-touchStartY;
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)){
+    if(dx<0)document.getElementById('navNext').click();
+    else document.getElementById('navPrev').click();
+  }
+},{passive:true});
 
 /* ── ZOOM ── */
 zoomSlider.oninput=()=>{
@@ -1053,10 +1085,14 @@ document.getElementById('oDelete').onclick=()=>{
 /* ── DOWNLOAD ── */
 document.getElementById('oDownload').onclick=async()=>{
   const p=visibleList[overlayIndex];if(!p)return;
-  if(!p.handle)await ensureMonthScanned(p.year,p.month);
-  if(!p.handle){showToast('File not available');return;}
   try{
-    const file=await p.handle.getFile();
+    let file;
+    if(p.file){file=p.file;}
+    else{
+      if(!p.handle)await ensureMonthScanned(p.year,p.month);
+      if(!p.handle){showToast('File not available');return;}
+      file=await p.handle.getFile();
+    }
     const a=document.createElement('a');
     a.href=URL.createObjectURL(file);
     a.download=file.name;a.click();
@@ -1270,19 +1306,104 @@ document.getElementById('importFile').onchange=e=>{
   r.readAsText(file);
 };
 
-/* ── HANDLE ── */
+/* ── HANDLE (File System Access API) ── */
 async function activateHandle(handle){
   rootHandle=handle;await idbPut(handle);
   if(!meta.length)await fullScan(handle);else await incrementalUpdate(handle);
   showYearAlbums();document.getElementById('backToYears').style.display='none';
 }
+
+/* ── MOBILE FALLBACK: webkitdirectory file input ── */
+const hasFSA=typeof window.showDirectoryPicker==='function';
+
+function scanFileList(files){
+  meta=[];allPhotos=[];monthScanned.clear();
+  const exts=/\.(webp|jpg|jpeg|png)$/i;
+  for(const file of files){
+    if(!exts.test(file.name))continue;
+    const relPath=file.webkitRelativePath||file.name;
+    const parts=relPath.split('/');
+    // expect: root/YYYY/YYYY-MM/file.ext
+    let year,month,subPath;
+    if(parts.length>=3){
+      year=parseInt(parts[parts.length-3],10);
+      month=parseInt(parts[parts.length-2].split('-')[1],10);
+      subPath=parts.slice(parts.length-3).join('/');
+    }else{
+      const m=relPath.match(/(\d{4})[\/\\](\d{4})-(\d{2})[\/\\](.+)/);
+      if(!m)continue;
+      year=parseInt(m[1],10);
+      month=parseInt(m[3],10);
+      subPath=m[1]+'/'+m[2]+'-'+m[3]+'/'+m[4];
+    }
+    if(isNaN(year)||isNaN(month))continue;
+    meta.push({year,month,path:subPath});
+    allPhotos.push({year,month,path:subPath,file});
+  }
+  sortPhotos();saveMeta();
+  setStatus(`Found ${allPhotos.length} photos`);
+  showYearAlbums();document.getElementById('backToYears').style.display='none';
+}
+
+/* Override loadImage to work with file objects on mobile */
+const origLoadImage=loadImage;
+function loadImageMobile(img,photo){
+  if(photo.file){
+    const url=URL.createObjectURL(photo.file);
+    img.src=url;
+    applyRotation(img,photo.path);
+    putCachedThumb(photo.path,photo.file);
+  }else{
+    origLoadImage(img,photo);
+  }
+}
+
 document.getElementById('pickRoot').onclick=async()=>{
-  try{const handle=await window.showDirectoryPicker({startIn:'pictures',mode:'read'});await activateHandle(handle);}
-  catch(e){if(e.name!=='AbortError')console.error(e);}
+  if(hasFSA){
+    try{const handle=await window.showDirectoryPicker({startIn:'pictures',mode:'read'});await activateHandle(handle);}
+    catch(e){if(e.name!=='AbortError')console.error(e);}
+  }else{
+    document.getElementById('folderInput').click();
+  }
+};
+
+document.getElementById('folderInput').onchange=e=>{
+  const files=e.target.files;
+  if(!files||!files.length)return;
+  scanFileList(files);
+  // Replace loadImage with mobile version since we have file objects
+  if(!hasFSA){
+    window.loadImage=loadImageMobile;
+    // Also override lightbox image loading
+    const origShowLB=showLightboxPhoto;
+    window.showLightboxPhoto=async function(){
+      const p=visibleList[overlayIndex];
+      if(!p)return;
+      overlayTitle.textContent=p.path;
+      overlayCounter.textContent=`${overlayIndex+1} / ${visibleList.length}`;
+      overlayImg.src='';
+      overlayImg.style.transform=`scale(${overlayZoom}) rotate(${rotations[p.path]||0}deg)`;
+      document.getElementById('oFav').textContent=favorites.has(p.path)?'★ Unfav':'⭐ Fav';
+      const deg=rotations[p.path]||0;
+      overlayRot.style.display=deg?'inline':'none';
+      overlayRot.textContent=deg+'°';
+      if(p.file){
+        overlayImg.src=URL.createObjectURL(p.file);
+      }else{
+        const cached=await getCachedThumb(p.path);
+        if(cached){overlayImg.src=cached;return;}
+        if(!p.handle)await ensureMonthScanned(p.year,p.month);
+        if(!p.handle)return;
+        try{const file=await p.handle.getFile();overlayImg.src=URL.createObjectURL(file);}
+        catch(e){console.error(e);}
+      }
+    };
+  }
 };
 
 /* ── RECONNECT ── */
 async function tryAutoReconnect(){
+  if(!hasFSA)return;
   let handle;try{handle=await idbGet();}catch{return;}
   if(!handle)return;
   let perm='prompt';
