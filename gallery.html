@@ -457,35 +457,7 @@
   .item.deleting { animation: fadeOut .3s forwards; }
   @keyframes fadeOut { to { opacity: 0; transform: scale(.85); } }
 
-  /* ── PROGRESS BAR ── */
-  #progressOverlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.85);
-    z-index: 70;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-  #progressOverlay.open { display: flex; }
-  #progressOverlay h3 { font-size: 0.9rem; color: var(--text); margin: 0; }
-  #progressOverlay .sub { font-size: 0.75rem; color: var(--text2); }
-  #progressBarOuter {
-    width: min(320px, 80%);
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  #progressBarInner {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    border-radius: 3px;
-    transition: width .2s;
-  }
-  #progressPct { font-size: 0.72rem; color: var(--text2); }
+
 
   /* ── TOUCH DEVICES ── */
   @media (hover: none) and (pointer: coarse) {
@@ -519,6 +491,8 @@
   <button class="hbtn" id="statsBtn" title="Stats">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
   </button>
+
+  <button class="hbtn" id="clearCacheBtn" title="Clear cache & rescan" style="color:var(--warn);">🗑 Clear</button>
 
   <button class="hbtn" id="backToYears" style="display:none;">◀ Back</button>
 
@@ -602,14 +576,6 @@
 
 <!-- Hidden file input for mobile fallback -->
 <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
-
-<!-- Progress Overlay -->
-<div id="progressOverlay">
-  <h3 id="progressTitle">Scanning photos…</h3>
-  <div id="progressBarOuter"><div id="progressBarInner"></div></div>
-  <span id="progressPct">0%</span>
-  <span class="sub" id="progressDetail"></span>
-</div>
 
 <!-- Toast -->
 <div id="toast"></div>
@@ -1353,41 +1319,48 @@ async function activateHandle(handle){
 
 /* ── MOBILE FALLBACK: webkitdirectory file input ── */
 const hasFSA=typeof window.showDirectoryPicker==='function';
-const progressOverlay=document.getElementById('progressOverlay');
-const progressBarInner=document.getElementById('progressBarInner');
-const progressPct=document.getElementById('progressPct');
-const progressDetail=document.getElementById('progressDetail');
-const progressTitle=document.getElementById('progressTitle');
+let _progEl=null;
 
-function showProgress(title){progressTitle.textContent=title;progressBarInner.style.width='0%';progressPct.textContent='0%';progressDetail.textContent='';progressOverlay.classList.add('open');}
-function updateProgress(pct,detail){progressBarInner.style.width=pct+'%';progressPct.textContent=Math.round(pct)+'%';if(detail)progressDetail.textContent=detail;}
-function hideProgress(){progressOverlay.classList.remove('open');}
+function showProgress(title){
+  if(_progEl){_progEl.remove();_progEl=null;}
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#141416;padding:14px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:system-ui,sans-serif;border-bottom:2px solid #7c6af7;';
+  el.innerHTML='<div style="color:#e8e8ec;font-size:14px;font-weight:600;">'+title+'</div>'
+    +'<div style="width:100%;max-width:320px;height:6px;background:#2a2a2e;border-radius:3px;overflow:hidden;">'
+    +'<div id="_pbar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c6af7,#e05c8a);border-radius:3px;transition:width .15s;"></div></div>'
+    +'<div style="display:flex;justify-content:space-between;width:100%;max-width:320px;">'
+    +'<span id="_pctx" style="color:#888890;font-size:12px;">0%</span>'
+    +'<span id="_pdtl" style="color:#888890;font-size:12px;"></span></div>';
+  document.body.appendChild(el);
+  _progEl=el;
+}
+
+function updateProgress(pct,dtl){
+  const bar=document.getElementById('_pbar');
+  const ctx=document.getElementById('_pctx');
+  const dtlEl=document.getElementById('_pdtl');
+  if(bar)bar.style.width=pct+'%';
+  if(ctx)ctx.textContent=Math.round(pct)+'%';
+  if(dtl&&dtlEl)dtlEl.textContent=dtl;
+}
+
+function hideProgress(){
+  if(_progEl){_progEl.remove();_progEl=null;}
+}
 
 function parsePath(relPath){
-  const exts=/\.(webp|jpg|jpeg|png)$/i;
-  if(!exts.test(relPath))return null;
-  const segs=relPath.split('/');
+  if(!/\.(webp|jpg|jpeg|png)$/i.test(relPath))return null;
+  /* Match YYYY anywhere, then YYYY-MM or MM nearby */
   let year=0,month=0;
-  for(let i=0;i<segs.length-1;i++){
-    const s=segs[i];
-    /* YYYY-MM or YYYY-M folder */
-    const mm=s.match(/^(\d{4})-(\d{1,2})$/);
-    if(mm){year=parseInt(mm[1],10);month=parseInt(mm[2],10);break;}
-  }
+  /* Best: find YYYY-MM directly */
+  const ym=relPath.match(/(\d{4})-(\d{1,2})/);
+  if(ym){year=parseInt(ym[1],10);month=parseInt(ym[2],10);}
   if(!year){
-    for(let i=0;i<segs.length-1;i++){
-      if(/^\d{4}$/.test(segs[i])){year=parseInt(segs[i],10);
-        if(i+1<segs.length-1){
-          const nxt=segs[i+1];
-          const nm=nxt.match(/^(\d{4})-(\d{1,2})$/);
-          if(nm)month=parseInt(nm[2],10);
-          else if(/^\d{1,2}$/.test(nxt)){const v=parseInt(nxt,10);if(v>=1&&v<=12)month=v;}
-        }
-        break;
-      }
-    }
+    /* Fallback: find a 4-digit year, then look for month nearby */
+    const ym2=relPath.match(/(\d{4})[\/\\](\d{1,2})[\/\\]/);
+    if(ym2){year=parseInt(ym2[1],10);month=parseInt(ym2[2],10);}
   }
-  if(!year||!month)return null;
+  if(!year||!month||month<1||month>12)return null;
   return{year,month,path:relPath};
 }
 
@@ -1412,39 +1385,40 @@ async function scanFileListAsync(files,onProgress){
 
 /* Incremental scan: load cached instantly, then diff in background */
 async function incrementalScan(files){
-  const oldMeta=meta.length?[...meta]:[];
-  const oldPaths=new Set(oldMeta.map(m=>m.path));
+  const oldPaths=new Set(meta.map(m=>m.path));
 
   const{newMeta,fileMap}=await scanFileListAsync(files,(pct,detail)=>{
     updateProgress(pct,detail);
   });
 
-  updateProgress(100,`${newMeta.length} photos found — processing…`);
-  await new Promise(r=>setTimeout(r,300));
+  updateProgress(100,`${newMeta.length} photos — building index…`);
+  await new Promise(r=>setTimeout(r,100));
 
-  /* Build fileMap for allPhotos */
   const newPaths=new Set(newMeta.map(m=>m.path));
 
   /* Remove photos no longer present */
   if(oldPaths.size>0){
     const removed=[...oldPaths].filter(p=>!newPaths.has(p));
     if(removed.length){
-      meta=meta.filter(m=>!removed.includes(m.path));
-      allPhotos=allPhotos.filter(p=>!removed.includes(p.path));
+      const rmSet=new Set(removed);
+      meta=meta.filter(m=>!rmSet.has(m.path));
+      allPhotos=allPhotos.filter(p=>!rmSet.has(p.path));
     }
   }
 
-  /* Add new photos */
+  /* Index existing photos by path for O(1) lookup */
+  const existingMap=new Map(allPhotos.map(p=>[p.path,p]));
+
+  /* Add new or update existing */
   let added=0;
   for(const m of newMeta){
-    if(!oldPaths.has(m.path)){
+    const ex=existingMap.get(m.path);
+    if(ex){
+      ex.file=fileMap.get(m.path);
+    }else{
       meta.push(m);
       allPhotos.push({...m,file:fileMap.get(m.path)});
       added++;
-    }else{
-      /* Update file ref for existing photos */
-      const existing=allPhotos.find(p=>p.path===m.path);
-      if(existing)existing.file=fileMap.get(m.path);
     }
   }
 
@@ -1554,6 +1528,21 @@ async function tryAutoReconnect(){
     };
   }
 }
+
+/* ── CLEAR CACHE ── */
+document.getElementById('clearCacheBtn').onclick=()=>{
+  if(!confirm('Clear all cached data?\nYou will need to re-select your photo folder.'))return;
+  localStorage.removeItem('photoMeta');
+  localStorage.removeItem('photoFavorites');
+  localStorage.removeItem('photoRotations');
+  localStorage.removeItem('photoDeleted');
+  localStorage.removeItem('photoAlbums');
+  localStorage.removeItem('rootName');
+  meta=[];allPhotos=[];favorites=new Set();rotations={};deletedPaths=new Set();albums={};
+  grid.innerHTML='';
+  setStatus('Cache cleared — select a folder');
+  showToast('Cache cleared');
+};
 
 /* ── INIT ── */
 async function initialize(){
