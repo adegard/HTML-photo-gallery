@@ -1370,7 +1370,7 @@ function parsePath(relPath){
       }
     }
   }
-  /* Strategy 3: brute-force any 4-digit year + any 1-2 digit month (01-12) in path */
+  /* Strategy 3: brute-force */
   if(!year||!month){
     const allNums=[...relPath.matchAll(/(\d{4})/g)].map(m=>parseInt(m[1],10));
     const years=allNums.filter(y=>y>=1990&&y<=2099);
@@ -1388,106 +1388,26 @@ function parsePath(relPath){
   return{year,month,path:relPath};
 }
 
-/* Async chunked scan with progress */
-async function scanFileListAsync(files,onProgress){
-  const total=files.length;
-  const CHUNK=2000;
-  const newMeta=[];const fileMap=new Map();
-  let skipped=0;const skippedSamples=[];
-  for(let i=0;i<total;i+=CHUNK){
-    const end=Math.min(i+CHUNK,total);
-    for(let j=i;j<end;j++){
-      const file=files[j];
-      const relPath=file.webkitRelativePath||file.name;
-      const parsed=parsePath(relPath);
-      if(parsed){newMeta.push(parsed);fileMap.set(parsed.path,file);}
-      else{skipped++;if(skippedSamples.length<8)skippedSamples.push(relPath);}
-    }
-    if(onProgress)onProgress(end/total*100,`${end}/${total} files`);
-    if(end<total)await new Promise(r=>setTimeout(r,0));
-  }
-  return{newMeta,fileMap,skipped,skippedSamples};
-}
-
-/* Incremental scan: load cached instantly, then diff in background */
-async function incrementalScan(files){
-  const oldPaths=new Set(meta.map(m=>m.path));
-
-  /* DEBUG: show ALL raw paths */
-  const rawPaths=[];
-  for(let i=0;i<Math.min(files.length,200);i++){
-    rawPaths.push(files[i].webkitRelativePath||files[i].name);
-  }
-
-  const{newMeta,fileMap,skipped,skippedSamples}=await scanFileListAsync(files,(pct,detail)=>{
-    updateProgress(pct,detail);
-  });
-
-  const skipInfo=skipped>0?` (${skipped} skipped)`:'';
-  updateProgress(100,`${newMeta.length} photos${skipInfo}`);
-  await new Promise(r=>setTimeout(r,300));
-
-  const newPaths=new Set(newMeta.map(m=>m.path));
-
-  /* Remove photos no longer present */
-  if(oldPaths.size>0){
-    const removed=[...oldPaths].filter(p=>!newPaths.has(p));
-    if(removed.length){
-      const rmSet=new Set(removed);
-      meta=meta.filter(m=>!rmSet.has(m.path));
-      allPhotos=allPhotos.filter(p=>!rmSet.has(p.path));
-    }
-  }
-
-  /* Index existing photos by path for O(1) lookup */
-  const existingMap=new Map(allPhotos.map(p=>[p.path,p]));
-
-  /* Add new or update existing */
-  let added=0;
-  for(const m of newMeta){
-    const ex=existingMap.get(m.path);
-    if(ex){
-      ex.file=fileMap.get(m.path);
-    }else{
-      meta.push(m);
-      allPhotos.push({...m,file:fileMap.get(m.path)});
+/* Add files from file input — ACCUMULATES into existing gallery */
+function addFilesToGallery(files){
+  const existingPaths=new Set(meta.map(m=>m.path));
+  let added=0,skipped=0;
+  for(const file of files){
+    const relPath=file.webkitRelativePath||file.name;
+    const parsed=parsePath(relPath);
+    if(parsed&&!existingPaths.has(parsed.path)){
+      meta.push(parsed);
+      allPhotos.push({...parsed,file});
+      existingPaths.add(parsed.path);
       added++;
-    }
+    }else if(!parsed){skipped++;}
   }
-
   sortPhotos();saveMeta();
   hideProgress();
-
-  /* DEBUG: show all raw paths and skipped paths in a panel */
-  const dbg=document.createElement('div');
-  dbg.style.cssText='position:fixed;inset:0;z-index:999999;background:#0d0d0f;color:#e8e8ec;font:12px/1.5 monospace;overflow:auto;padding:10px;';
-  let html=`<div style="position:sticky;top:0;background:#141416;padding:8px;border-bottom:1px solid #2a2a2e;display:flex;justify-content:space-between;align-items:center;">`
-    +`<b>DEBUG: ${files.length} total files, ${newMeta.length} parsed, ${skipped} skipped</b>`
-    +`<button onclick="this.parentElement.parentElement.remove()" style="padding:4px 12px;background:#7c6af7;color:#fff;border:none;border-radius:4px;">CLOSE</button></div>`;
-  if(skippedSamples.length){
-    html+=`<div style="margin:8px 0;padding:8px;background:#2a1414;border-radius:4px;"><b>SKIPPED SAMPLES:</b><br>${skippedSamples.map(p=>'<div style="color:#e0483a;word-break:break-all;">'+p+'</div>').join('')}</div>`;
-  }
-  html+=`<div style="margin:8px 0;"><b>FIRST 100 PATHS:</b></div>`;
-  rawPaths.forEach((p,i)=>{html+='<div style="word-break:break-all;">'+i+': '+p+'</div>';});
-  dbg.innerHTML=html;
-  document.body.appendChild(dbg);
-
-  const skipNote=skipped>0?` — ${skipped} skipped`:'';
-  setStatus(`${allPhotos.length} photos${added?` (${added} new)`:''}${skipNote}`);
+  setStatus(`${allPhotos.length} photos (${added} added, ${skipped} skipped)`);
   showYearAlbums();document.getElementById('backToYears').style.display='none';
-}
-
-function scanFileList(files){
-  meta=[];allPhotos=[];monthScanned.clear();
-  const exts=/\.(webp|jpg|jpeg|png)$/i;
-  for(const file of files){
-    if(!exts.test(file.name))continue;
-    const parsed=parsePath(file.webkitRelativePath||file.name);
-    if(parsed){meta.push(parsed);allPhotos.push({...parsed,file});}
-  }
-  sortPhotos();saveMeta();
-  setStatus(`Found ${allPhotos.length} photos`);
-  showYearAlbums();document.getElementById('backToYears').style.display='none';
+  if(added>0)showToast(`Added ${added} photos`);
+  else showToast('No new photos found');
 }
 
 /* Override loadImage to work with file objects on mobile */
@@ -1508,6 +1428,7 @@ document.getElementById('pickRoot').onclick=async()=>{
     try{const handle=await window.showDirectoryPicker({startIn:'pictures',mode:'read'});await activateHandle(handle);}
     catch(e){if(e.name!=='AbortError')console.error(e);}
   }else{
+    document.getElementById('folderInput').value='';
     document.getElementById('folderInput').click();
   }
 };
@@ -1515,10 +1436,6 @@ document.getElementById('pickRoot').onclick=async()=>{
 document.getElementById('folderInput').onchange=e=>{
   const files=e.target.files;
   if(!files||!files.length)return;
-  /* Show progress bar NOW, then yield to browser so it can paint */
-  showProgress('Reading folder…');
-  updateProgress(0,`Scanning ${files.length} files…`);
-  /* Replace loadImage with mobile version since we have file objects */
   if(!hasFSA){
     window.loadImage=loadImageMobile;
     window.showLightboxPhoto=async function(){
@@ -1544,8 +1461,9 @@ document.getElementById('folderInput').onchange=e=>{
       }
     };
   }
-  /* Start scan AFTER handler returns so browser paints the progress bar */
-  setTimeout(()=>incrementalScan(files),80);
+  showProgress('Reading folder…');
+  updateProgress(0,`${files.length} files…`);
+  setTimeout(()=>addFilesToGallery(files),60);
 };
 
 /* ── RECONNECT ── */
