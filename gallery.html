@@ -42,9 +42,12 @@
     padding: 0 10px;
     position: relative;
     z-index: 30;
-    flex-wrap: nowrap;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  header::-webkit-scrollbar { display: none; }
 
   .hbtn {
     background: var(--bg3);
@@ -71,6 +74,7 @@
     white-space: nowrap;
     margin-left: auto;
     min-width: 0;
+    flex-shrink: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }

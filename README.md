@@ -20,6 +20,7 @@ A lightweight, single-file HTML photo gallery that browses your local photos dir
 
 - A modern browser with File System Access API support (Chrome 86+, Edge 86+)
   - Firefox and Safari do **not** support this API
+- **Mobile (Android/iOS)**: Works via file picker fallback — no special API needed
 
 ## Installation
 
@@ -51,6 +52,14 @@ A lightweight, single-file HTML photo gallery that browses your local photos dir
    ```
 3. Supported formats: **JPG**, **JPEG**, **PNG**, **WebP**
 4. Use the toolbar to search, create albums, start a slideshow, or view stats.
+
+### Mobile (Android / iOS)
+
+- Tap **Open** and select your photo folder.
+- **First run may take a while** if you have thousands of photos — the browser needs to scan every file. Subsequent opens are much faster thanks to caching.
+- Android Chrome may not return all files at once for very large folders. If photos are missing, tap **Open** again and re-select the same folder — each tap accumulates more photos until everything is found.
+- Swipe left/right in the lightbox to navigate between photos.
+- Tap **Clear** to reset cached data and start fresh.
 
 ### Keyboard Shortcuts (Lightbox)
 
