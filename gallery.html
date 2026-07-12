@@ -1350,15 +1350,39 @@ function hideProgress(){
 
 function parsePath(relPath){
   if(!/\.(webp|jpg|jpeg|png)$/i.test(relPath))return null;
-  /* Match YYYY anywhere, then YYYY-MM or MM nearby */
   let year=0,month=0;
-  /* Best: find YYYY-MM directly */
-  const ym=relPath.match(/(\d{4})-(\d{1,2})/);
-  if(ym){year=parseInt(ym[1],10);month=parseInt(ym[2],10);}
+  /* Strategy 1: YYYY-MM in a folder segment */
+  const parts=relPath.split('/');
+  for(let i=0;i<parts.length-1;i++){
+    const m=parts[i].match(/^(\d{4})-(\d{1,2})$/);
+    if(m){year=parseInt(m[1],10);month=parseInt(m[2],10);break;}
+  }
+  /* Strategy 2: YYYY then MM in next segment */
   if(!year){
-    /* Fallback: find a 4-digit year, then look for month nearby */
-    const ym2=relPath.match(/(\d{4})[\/\\](\d{1,2})[\/\\]/);
-    if(ym2){year=parseInt(ym2[1],10);month=parseInt(ym2[2],10);}
+    for(let i=0;i<parts.length-1;i++){
+      if(/^\d{4}$/.test(parts[i])&&i+1<parts.length-1){
+        year=parseInt(parts[i],10);
+        const nxt=parts[i+1];
+        const m2=nxt.match(/^(\d{4})-(\d{1,2})$/);
+        if(m2)month=parseInt(m2[2],10);
+        else{const v=parseInt(nxt,10);if(v>=1&&v<=12)month=v;}
+        break;
+      }
+    }
+  }
+  /* Strategy 3: brute-force any 4-digit year + any 1-2 digit month (01-12) in path */
+  if(!year||!month){
+    const allNums=[...relPath.matchAll(/(\d{4})/g)].map(m=>parseInt(m[1],10));
+    const years=allNums.filter(y=>y>=1990&&y<=2099);
+    if(years.length){year=years[years.length-1];}
+    if(year){
+      const monthRe=new RegExp('(?:^|[\\/\\\\-])(\\d{1,2})(?:[\\/\\\\.-]|$)','g');
+      let mm;
+      while((mm=monthRe.exec(relPath))!==null){
+        const v=parseInt(mm[1],10);
+        if(v>=1&&v<=12&&mm.index>relPath.indexOf(String(year))){month=v;break;}
+      }
+    }
   }
   if(!year||!month||month<1||month>12)return null;
   return{year,month,path:relPath};
@@ -1369,6 +1393,7 @@ async function scanFileListAsync(files,onProgress){
   const total=files.length;
   const CHUNK=2000;
   const newMeta=[];const fileMap=new Map();
+  let skipped=0;const skippedSamples=[];
   for(let i=0;i<total;i+=CHUNK){
     const end=Math.min(i+CHUNK,total);
     for(let j=i;j<end;j++){
@@ -1376,23 +1401,25 @@ async function scanFileListAsync(files,onProgress){
       const relPath=file.webkitRelativePath||file.name;
       const parsed=parsePath(relPath);
       if(parsed){newMeta.push(parsed);fileMap.set(parsed.path,file);}
+      else{skipped++;if(skippedSamples.length<8)skippedSamples.push(relPath);}
     }
-    if(onProgress)onProgress(end/total*100,`${end} / ${total} files`);
+    if(onProgress)onProgress(end/total*100,`${end}/${total} files`);
     if(end<total)await new Promise(r=>setTimeout(r,0));
   }
-  return{newMeta,fileMap};
+  return{newMeta,fileMap,skipped,skippedSamples};
 }
 
 /* Incremental scan: load cached instantly, then diff in background */
 async function incrementalScan(files){
   const oldPaths=new Set(meta.map(m=>m.path));
 
-  const{newMeta,fileMap}=await scanFileListAsync(files,(pct,detail)=>{
+  const{newMeta,fileMap,skipped,skippedSamples}=await scanFileListAsync(files,(pct,detail)=>{
     updateProgress(pct,detail);
   });
 
-  updateProgress(100,`${newMeta.length} photos — building index…`);
-  await new Promise(r=>setTimeout(r,100));
+  const skipInfo=skipped>0?` (${skipped} skipped)`:'';
+  updateProgress(100,`${newMeta.length} photos${skipInfo}`);
+  await new Promise(r=>setTimeout(r,300));
 
   const newPaths=new Set(newMeta.map(m=>m.path));
 
@@ -1424,7 +1451,8 @@ async function incrementalScan(files){
 
   sortPhotos();saveMeta();
   hideProgress();
-  setStatus(`${allPhotos.length} photos${added?` (${added} new)`:''}`);
+  const skipNote=skipped>0?` — ${skipped} files skipped (check console)`:'';
+  setStatus(`${allPhotos.length} photos${added?` (${added} new)`:''}${skipNote}`);
   showYearAlbums();document.getElementById('backToYears').style.display='none';
 }
 
