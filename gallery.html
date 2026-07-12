@@ -1362,23 +1362,32 @@ const progressTitle=document.getElementById('progressTitle');
 function showProgress(title){progressTitle.textContent=title;progressBarInner.style.width='0%';progressPct.textContent='0%';progressDetail.textContent='';progressOverlay.classList.add('open');}
 function updateProgress(pct,detail){progressBarInner.style.width=pct+'%';progressPct.textContent=Math.round(pct)+'%';if(detail)progressDetail.textContent=detail;}
 function hideProgress(){progressOverlay.classList.remove('open');}
-function forceRepaint(){return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}
 
 function parsePath(relPath){
   const exts=/\.(webp|jpg|jpeg|png)$/i;
   if(!exts.test(relPath))return null;
-  /* Try to find YYYY and YYYY-MM (or MM) anywhere in the path */
   const segs=relPath.split('/');
   let year=0,month=0;
   for(let i=0;i<segs.length-1;i++){
     const s=segs[i];
-    /* YYYY-MM folder */
+    /* YYYY-MM folder — highest confidence */
     const mm=s.match(/^(\d{4})-(\d{2})$/);
-    if(mm){year=year||parseInt(mm[1],10);month=month||parseInt(mm[2],10);continue;}
-    /* Plain YYYY folder */
-    if(/^\d{4}$/.test(s)&&!year){year=parseInt(s,10);continue;}
-    /* Plain MM folder (01-12) */
-    if(/^\d{2}$/.test(s)&&!month){const v=parseInt(s,10);if(v>=1&&v<=12)month=v;}
+    if(mm){year=parseInt(mm[1],10);month=parseInt(mm[2],10);break;}
+  }
+  /* Fallback: find year first, then month in next segment */
+  if(!year){
+    for(let i=0;i<segs.length-1;i++){
+      if(/^\d{4}$/.test(segs[i])){year=parseInt(segs[i],10);
+        /* Look for MM or YYYY-MM in the very next segment */
+        if(i+1<segs.length-1){
+          const nxt=segs[i+1];
+          const nm=nxt.match(/^(\d{4})-(\d{2})$/);
+          if(nm)month=parseInt(nm[2],10);
+          else if(/^\d{2}$/.test(nxt)){const v=parseInt(nxt,10);if(v>=1&&v<=12)month=v;}
+        }
+        break;
+      }
+    }
   }
   if(!year||!month)return null;
   return{year,month,path:relPath};
@@ -1387,7 +1396,7 @@ function parsePath(relPath){
 /* Async chunked scan with progress */
 async function scanFileListAsync(files,onProgress){
   const total=files.length;
-  const CHUNK=500;
+  const CHUNK=2000;
   const newMeta=[];const fileMap=new Map();
   for(let i=0;i<total;i+=CHUNK){
     const end=Math.min(i+CHUNK,total);
@@ -1397,7 +1406,7 @@ async function scanFileListAsync(files,onProgress){
       const parsed=parsePath(relPath);
       if(parsed){newMeta.push(parsed);fileMap.set(parsed.path,file);}
     }
-    if(onProgress)onProgress(i+end>total?100:(end/total)*100,`${end} / ${total} files`);
+    if(onProgress)onProgress(end/total*100,`${end} / ${total} files`);
     if(end<total)await new Promise(r=>setTimeout(r,0));
   }
   return{newMeta,fileMap};
@@ -1409,14 +1418,14 @@ async function incrementalScan(files){
   const oldPaths=new Set(oldMeta.map(m=>m.path));
   showProgress('Reading folder…');
   updateProgress(0,`Scanning ${files.length} files…`);
-  await forceRepaint();
+  await new Promise(r=>setTimeout(r,60));
 
   const{newMeta,fileMap}=await scanFileListAsync(files,(pct,detail)=>{
     updateProgress(pct,detail);
   });
 
   updateProgress(100,`${newMeta.length} photos found`);
-  await new Promise(r=>setTimeout(r,200));
+  await new Promise(r=>setTimeout(r,300));
 
   /* Build fileMap for allPhotos */
   const newPaths=new Set(newMeta.map(m=>m.path));
