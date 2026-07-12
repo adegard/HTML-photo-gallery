@@ -1362,23 +1362,26 @@ const progressTitle=document.getElementById('progressTitle');
 function showProgress(title){progressTitle.textContent=title;progressBarInner.style.width='0%';progressPct.textContent='0%';progressDetail.textContent='';progressOverlay.classList.add('open');}
 function updateProgress(pct,detail){progressBarInner.style.width=pct+'%';progressPct.textContent=Math.round(pct)+'%';if(detail)progressDetail.textContent=detail;}
 function hideProgress(){progressOverlay.classList.remove('open');}
+function forceRepaint(){return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}
 
 function parsePath(relPath){
   const exts=/\.(webp|jpg|jpeg|png)$/i;
-  const parts=relPath.split('/');
-  let year,month,subPath;
-  if(parts.length>=3){
-    year=parseInt(parts[parts.length-3],10);
-    month=parseInt(parts[parts.length-2].split('-')[1],10);
-    subPath=parts.slice(parts.length-3).join('/');
-  }else{
-    const m=relPath.match(/(\d{4})[\/\\](\d{4})-(\d{2})[\/\\](.+)/);
-    if(!m)return null;
-    year=parseInt(m[1],10);month=parseInt(m[3],10);
-    subPath=m[1]+'/'+m[2]+'-'+m[3]+'/'+m[4];
+  if(!exts.test(relPath))return null;
+  /* Try to find YYYY and YYYY-MM (or MM) anywhere in the path */
+  const segs=relPath.split('/');
+  let year=0,month=0;
+  for(let i=0;i<segs.length-1;i++){
+    const s=segs[i];
+    /* YYYY-MM folder */
+    const mm=s.match(/^(\d{4})-(\d{2})$/);
+    if(mm){year=year||parseInt(mm[1],10);month=month||parseInt(mm[2],10);continue;}
+    /* Plain YYYY folder */
+    if(/^\d{4}$/.test(s)&&!year){year=parseInt(s,10);continue;}
+    /* Plain MM folder (01-12) */
+    if(/^\d{2}$/.test(s)&&!month){const v=parseInt(s,10);if(v>=1&&v<=12)month=v;}
   }
-  if(isNaN(year)||isNaN(month)||!exts.test(subPath))return null;
-  return{year,month,path:subPath};
+  if(!year||!month)return null;
+  return{year,month,path:relPath};
 }
 
 /* Async chunked scan with progress */
@@ -1405,14 +1408,15 @@ async function incrementalScan(files){
   const oldMeta=meta.length?[...meta]:[];
   const oldPaths=new Set(oldMeta.map(m=>m.path));
   showProgress('Reading folder…');
-  updateProgress(0,'Starting…');
+  updateProgress(0,`Scanning ${files.length} files…`);
+  await forceRepaint();
 
   const{newMeta,fileMap}=await scanFileListAsync(files,(pct,detail)=>{
     updateProgress(pct,detail);
   });
 
   updateProgress(100,`${newMeta.length} photos found`);
-  await new Promise(r=>setTimeout(r,100));
+  await new Promise(r=>setTimeout(r,200));
 
   /* Build fileMap for allPhotos */
   const newPaths=new Set(newMeta.map(m=>m.path));
