@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Local Photo Gallery</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #141416;
+    --bg3: #1c1c1f;
+    --border: #2a2a2e;
+    --text: #e8e8ec;
+    --text2: #888890;
+    --accent: #7c6af7;
+    --accent2: #e05c8a;
+    --danger: #e0483a;
+    --success: #3ab96b;
+    --warn: #e09e3a;
+    --header-h: 48px;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    height: var(--header-h);
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    position: relative;
+    z-index: 30;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .hbtn {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s, background .15s;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .hbtn:hover { border-color: var(--accent); background: #22222a; }
+  .hbtn.active { border-color: var(--accent); background: #2a2040; color: var(--accent); }
+  .hbtn.danger:hover { border-color: var(--danger); }
+  .hbtn svg { width:14px; height:14px; flex-shrink:0; }
+
+  select.hbtn { padding: 4px 6px; }
+
+  #status {
+    font-size: 0.72rem;
+    color: var(--text2);
+    white-space: nowrap;
+    margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── SEARCH BAR ── */
+  #searchWrap {
+    display: none;
+    padding: 6px 10px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+  #searchWrap.open { display: flex; gap: 6px; }
+  #searchInput {
+    flex: 1;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.82rem;
+    outline: none;
+  }
+  #searchInput:focus { border-color: var(--accent); }
+
+  /* ── MAIN SCROLL ── */
+  main {
+    height: calc(100vh - var(--header-h));
+    overflow-y: auto;
+    position: relative;
+  }
+  main.search-open { height: calc(100vh - var(--header-h) - 40px); }
+
+  /* ── GRID ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .month {
+    grid-column: 1/-1;
+    background: var(--bg2);
+    padding: 5px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    color: var(--text2);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── PHOTO ITEM ── */
+  .item {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--bg3);
+    overflow: hidden;
+    border-radius: 3px;
+  }
+
+  .item img {
+    width: 100%; height: 100%;
+    display: block;
+    object-fit: cover;
+    cursor: pointer;
+    transition: transform .25s ease, filter .2s;
+  }
+  .item:hover img { transform: scale(1.04); }
+
+  .item input[type="checkbox"] {
+    position: absolute;
+    top: 5px; left: 5px;
+    width: 18px; height: 18px;
+    display: none;
+    accent-color: var(--accent);
+    z-index: 3;
+    cursor: pointer;
+  }
+
+  /* favorite star */
+  .fav-btn {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .15s;
+    z-index: 3;
+    text-shadow: 0 1px 4px rgba(0,0,0,.7);
+    padding: 2px;
+  }
+  .item:hover .fav-btn,
+  .item .fav-btn.starred { opacity: 1; }
+
+  /* delete X overlay */
+  .del-btn {
+    position: absolute;
+    bottom: 4px; right: 4px;
+    background: rgba(224,72,58,.85);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 0.7rem;
+    width: 20px; height: 20px;
+    cursor: pointer;
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 3;
+    transition: background .15s;
+  }
+  .del-btn:hover { background: var(--danger); }
+  body.select-mode .del-btn { display: none !important; }
+
+  /* rotate badge */
+  .rot-badge {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    background: rgba(0,0,0,.55);
+    border-radius: 3px;
+    color: var(--text2);
+    font-size: 0.58rem;
+    padding: 1px 4px;
+    display: none;
+    z-index: 3;
+  }
+  .item.rotated .rot-badge { display: block; }
+
+  /* ── OVERLAY / LIGHTBOX ── */
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.95);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  #overlayTopBar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    gap: 8px;
+    background: rgba(0,0,0,.6);
+    backdrop-filter: blur(6px);
+    flex-shrink: 0;
+  }
+
+  #overlayTitle {
+    font-size: 0.75rem;
+    color: var(--text2);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .obtn {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+    white-space: nowrap;
+    transition: border-color .15s, background .15s;
+  }
+  .obtn:hover { border-color: var(--accent); background: #22222a; }
+  .obtn.danger:hover { border-color: var(--danger); background: #2a1414; }
+  .obtn svg { width:14px; height:14px; }
+
+  #overlayImgWrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  #overlayImg {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform .3s ease;
+    transform-origin: center center;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* nav arrows */
+  .nav-arrow {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    background: rgba(0,0,0,.5);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 50%;
+    width: 36px; height: 36px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    transition: background .15s;
+    z-index: 2;
+  }
+  .nav-arrow:hover { background: rgba(124,106,247,.5); }
+  #navPrev { left: 10px; }
+  #navNext { right: 10px; }
+
+  #overlayBottomBar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(0,0,0,.6);
+    backdrop-filter: blur(6px);
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: var(--text2);
+  }
+
+  /* zoom slider */
+  #zoomSlider {
+    -webkit-appearance: none;
+    width: 80px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  #zoomSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  /* ── SELECTION BAR ── */
+  #selectionBar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg2);
+    padding: 7px 10px;
+    border-top: 1px solid var(--border);
+    display: none;
+    font-size: 0.8rem;
+    z-index: 40;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #selectionBar input {
+    flex: 1; min-width: 100px;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+  }
+
+  /* ── ALBUMS PANEL ── */
+  #albumsPanel {
+    position: fixed;
+    right: 0; top: var(--header-h); bottom: 0;
+    width: min(300px, 100%);
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    padding: 10px;
+    overflow-y: auto;
+    display: none;
+    z-index: 20;
+  }
+  #albumsPanel h3 { margin: 0 0 6px; font-size: 0.85rem; }
+  #albumsPanel p { font-size: 0.72rem; color: var(--text2); margin: 0 0 5px; }
+  #albumsPanel textarea {
+    width: 100%; height: 140px;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 0.72rem;
+    font-family: monospace;
+    border-radius: 4px;
+    padding: 6px;
+    resize: vertical;
+  }
+
+  /* ── SIDEBAR (INFO / TOOLS) ── */
+  #sidePanel {
+    position: fixed;
+    right: 0; top: var(--header-h); bottom: 0;
+    width: min(260px, 100%);
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    padding: 12px;
+    overflow-y: auto;
+    display: none;
+    z-index: 20;
+    font-size: 0.8rem;
+  }
+  #sidePanel h3 { margin: 0 0 10px; font-size: 0.82rem; color: var(--accent); letter-spacing: .04em; }
+  .side-stat { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); color: var(--text2); }
+  .side-stat span:last-child { color: var(--text); font-weight: 600; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    z-index: 99;
+    display: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+  }
+
+  /* ── RECONNECT BANNER ── */
+  #reconnectBanner {
+    display: none;
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 60;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  /* ── SLIDESHOW CONTROLS ── */
+  #slideshowBar {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    background: rgba(0,0,0,.7);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    gap: 10px;
+    align-items: center;
+    z-index: 55;
+    backdrop-filter: blur(8px);
+    font-size: 0.78rem;
+    color: var(--text2);
+  }
+
+  /* ── YEAR ALBUM ── */
+  .year-album { cursor: pointer; }
+  .year-label {
+    position: absolute;
+    bottom: 4px; left: 4px;
+    background: rgba(0,0,0,.6);
+    padding: 2px 7px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 3px;
+  }
+
+  /* ── SCROLLBAR ── */
+  main::-webkit-scrollbar { width: 6px; }
+  main::-webkit-scrollbar-track { background: var(--bg); }
+  main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── DELETED VISUAL ── */
+  .item.deleting { animation: fadeOut .3s forwards; }
+  @keyframes fadeOut { to { opacity: 0; transform: scale(.85); } }
+</style>
+</head>
+<body>
+
+<header>
+  <button class="hbtn" id="pickRoot">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+    Open
+  </button>
+
+  <button class="hbtn" id="selectModeBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Select
+  </button>
+
+  <button class="hbtn" id="searchBtn" title="Search photos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  </button>
+
+  <button class="hbtn" id="slideshowBtn" title="Slideshow">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+  </button>
+
+  <button class="hbtn" id="statsBtn" title="Stats">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+  </button>
+
+  <button class="hbtn" id="backToYears" style="display:none;">◀ Back</button>
+
+  <select class="hbtn" id="viewMode"><option value="all">All photos</option><option value="favorites">⭐ Favorites</option></select>
+
+  <button class="hbtn" id="albumsBtn">Albums</button>
+
+  <span id="status">No folder selected</span>
+</header>
+
+<!-- Search bar -->
+<div id="searchWrap">
+  <input id="searchInput" placeholder="Search by filename, year, month…" type="text">
+  <button class="hbtn" id="searchClose">✕</button>
+</div>
+
+<main id="mainScroll">
+  <div class="grid" id="grid"></div>
+  <div id="sentinel" style="height:40px;"></div>
+</main>
+
+<!-- Lightbox Overlay -->
+<div id="overlay">
+  <div id="overlayTopBar">
+    <span id="overlayTitle"></span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="obtn" id="oFav" title="Favorite">⭐ Favorite</button>
+      <button class="obtn" id="oRotLeft" title="Rotate left">↺ Left</button>
+      <button class="obtn" id="oRotRight" title="Rotate right">↻ Right</button>
+      <button class="obtn" id="oZoomIn" title="Zoom in">＋</button>
+      <button class="obtn" id="oZoomOut" title="Zoom out">－</button>
+      <button class="obtn" id="oDownload" title="Download">⬇ Save</button>
+      <button class="obtn danger" id="oDelete" title="Delete">🗑 Delete</button>
+      <button class="obtn" id="oClose" title="Close">✕</button>
+    </div>
+  </div>
+  <div id="overlayImgWrap">
+    <button class="nav-arrow" id="navPrev">‹</button>
+    <img id="overlayImg" src="" alt="">
+    <button class="nav-arrow" id="navNext">›</button>
+  </div>
+  <div id="overlayBottomBar">
+    <span id="overlayCounter"></span>
+    <input type="range" id="zoomSlider" min="0.5" max="4" step="0.1" value="1" title="Zoom">
+    <span id="overlayZoomPct">100%</span>
+    <span id="overlayRot" style="color:var(--accent);display:none;"></span>
+  </div>
+</div>
+
+<!-- Selection Bottom Bar -->
+<div id="selectionBar">
+  <span id="selectedCount">0 selected</span>
+  <button class="hbtn" id="selRotLeft" title="Rotate selected left">↺ Rotate L</button>
+  <button class="hbtn" id="selRotRight" title="Rotate selected right">↻ Rotate R</button>
+  <button class="hbtn" id="selFavBtn">⭐ Favorite</button>
+  <button class="hbtn danger" id="selDeleteBtn">🗑 Delete</button>
+  <input id="albumNameInput" placeholder="Album name">
+  <button class="hbtn" id="saveAlbumBtn">＋ Album</button>
+  <button class="hbtn" id="clearSelBtn">✕ Clear</button>
+</div>
+
+<!-- Albums Panel -->
+<div id="albumsPanel">
+  <h3>Albums JSON</h3>
+  <p>{ "id": { "name": "Label", "images": ["YYYY/YYYY-MM/file.jpg"] } }</p>
+  <textarea id="albumsJson"></textarea>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+    <button class="hbtn" id="saveAlbums">Save</button>
+    <button class="hbtn" id="loadAlbums">Reload</button>
+    <button class="hbtn" id="exportAlbums">Export</button>
+    <button class="hbtn" id="importAlbums">Import</button>
+    <input type="file" id="importFile" style="display:none">
+  </div>
+</div>
+
+<!-- Stats Side Panel -->
+<div id="sidePanel">
+  <h3>📊 Gallery Stats</h3>
+  <div id="statsContent"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Reconnect Banner -->
+<div id="reconnectBanner">
+  <div id="reconnectMsg">Reconnect to your photo folder</div>
+  <button class="hbtn" id="reconnectBtn" style="border-color:var(--success);font-size:1rem;padding:10px 24px;">Reconnect</button>
+  <button class="hbtn" id="reconnectPickNew" style="opacity:.7;">Choose different folder</button>
+</div>
+
+<script>
+/* ── IDB ── */
+const IDB_NAME='photoGalleryDB', IDB_STORE='handles', IDB_KEY='rootHandle';
+function idbOpen(){return new Promise((res,rej)=>{const req=indexedDB.open(IDB_NAME,1);req.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e.target.error);})}
+async function idbPut(v){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(v,IDB_KEY);tx.oncomplete=res;tx.onerror=e=>rej(e.target.error);})}
+async function idbGet(){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const req=tx.objectStore(IDB_STORE).get(IDB_KEY);req.onsuccess=e=>res(e.target.result||null);req.onerror=e=>rej(e.target.error);})}
+
+/* ── CACHE ── */
+const CACHE_NAME='photo-thumbs-v2';
+async function getCachedThumb(path){try{const c=await caches.open(CACHE_NAME);const r=await c.match('thumb://'+path);if(!r)return null;return URL.createObjectURL(await r.blob());}catch{return null;}}
+async function putCachedThumb(path,blob){try{const c=await caches.open(CACHE_NAME);await c.put('thumb://'+path,new Response(blob,{headers:{'Content-Type':blob.type||'image/jpeg'}}));}catch{}}
+
+/* ── STATE ── */
+let rootHandle=null, meta=[], allPhotos=[], monthScanned=new Set(),
+    visibleList=[], loadedCount=0;
+const batchSize=40;
+let albums={}, selectMode=false, selectedPaths=new Set(), currentYear=null;
+let deletedPaths=new Set(); // soft-delete (visual only, can't physically delete via FS API)
+let favorites=new Set();
+let rotations={}; // path -> degrees
+let overlayIndex=-1; // current photo index in lightbox
+let overlayZoom=1;
+let slideshowTimer=null;
+
+/* ── ELEMENTS ── */
+const grid=document.getElementById('grid');
+const sentinel=document.getElementById('sentinel');
+const statusEl=document.getElementById('status');
+const overlay=document.getElementById('overlay');
+const overlayImg=document.getElementById('overlayImg');
+const overlayTitle=document.getElementById('overlayTitle');
+const overlayCounter=document.getElementById('overlayCounter');
+const viewMode=document.getElementById('viewMode');
+const albumsPanel=document.getElementById('albumsPanel');
+const albumsJsonEl=document.getElementById('albumsJson');
+const selectionBar=document.getElementById('selectionBar');
+const selectedCountEl=document.getElementById('selectedCount');
+const albumNameInput=document.getElementById('albumNameInput');
+const mainScroll=document.getElementById('mainScroll');
+const reconnectBanner=document.getElementById('reconnectBanner');
+const searchWrap=document.getElementById('searchWrap');
+const searchInput=document.getElementById('searchInput');
+const sidePanel=document.getElementById('sidePanel');
+const zoomSlider=document.getElementById('zoomSlider');
+const overlayZoomPct=document.getElementById('overlayZoomPct');
+const overlayRot=document.getElementById('overlayRot');
+const toast=document.getElementById('toast');
+
+/* ── TOAST ── */
+let toastTimer;
+function showToast(msg,ms=2200){
+  toast.textContent=msg;
+  toast.style.display='block';
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toast.style.display='none',ms);
+}
+
+/* ── PERSIST EXTRAS ── */
+function saveExtras(){
+  localStorage.setItem('photoFavorites',JSON.stringify([...favorites]));
+  localStorage.setItem('photoRotations',JSON.stringify(rotations));
+  localStorage.setItem('photoDeleted',JSON.stringify([...deletedPaths]));
+}
+function loadExtras(){
+  try{favorites=new Set(JSON.parse(localStorage.getItem('photoFavorites')||'[]'));}catch{favorites=new Set();}
+  try{rotations=JSON.parse(localStorage.getItem('photoRotations')||'{}');}catch{rotations={};}
+  try{deletedPaths=new Set(JSON.parse(localStorage.getItem('photoDeleted')||'[]'));}catch{deletedPaths=new Set();}
+}
+
+/* ── STATUS ── */
+function setStatus(msg){statusEl.textContent=msg;}
+
+function monthKey(y,m){return `${y}-${String(m).padStart(2,'0')}`;}
+
+function sortPhotos(){
+  allPhotos.sort((a,b)=>{
+    if(a.year!==b.year)return b.year-a.year;
+    if(a.month!==b.month)return b.month-a.month;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function saveMeta(){try{localStorage.setItem('photoMeta',JSON.stringify(meta));}catch{}}
+function loadMetaFromCache(){
+  const raw=localStorage.getItem('photoMeta');
+  if(!raw)return false;
+  try{meta=JSON.parse(raw);allPhotos=meta.map(m=>({...m,handle:null}));sortPhotos();return true;}
+  catch{meta=[];allPhotos=[];return false;}
+}
+
+/* ── SCAN ── */
+async function fullScan(handle){
+  meta=[];allPhotos=[];monthScanned.clear();
+  setStatus('Scanning folders…');
+  localStorage.setItem('rootName',handle.name);
+  for await(const[yearName,yearDir]of handle.entries()){
+    if(yearDir.kind!=='directory'||!/^\d{4}$/.test(yearName))continue;
+    const year=parseInt(yearName,10);
+    for await(const[monthName,monthDir]of yearDir.entries()){
+      if(monthDir.kind!=='directory'||!/^\d{4}-\d{2}$/.test(monthName))continue;
+      const month=parseInt(monthName.slice(5),10);
+      for await(const[fileName,fileHandle]of monthDir.entries()){
+        if(fileHandle.kind!=='file')continue;
+        if(!fileName.toLowerCase().match(/\.(webp|jpg|jpeg|png)$/))continue;
+        const relPath=`${yearName}/${monthName}/${fileName}`;
+        meta.push({year,month,path:relPath});
+        allPhotos.push({year,month,path:relPath,handle:fileHandle});
+      }
+      monthScanned.add(monthKey(year,month));
+    }
+  }
+  sortPhotos();saveMeta();
+  setStatus(`Found ${allPhotos.length} photos`);
+}
+
+async function ensureMonthScanned(year,month){
+  const key=monthKey(year,month);
+  if(monthScanned.has(key)||!rootHandle)return;
+  try{
+    const yearDir=await rootHandle.getDirectoryHandle(String(year));
+    const monthDir=await yearDir.getDirectoryHandle(key);
+    for await(const[fileName,fileHandle]of monthDir.entries()){
+      if(fileHandle.kind!=='file')continue;
+      if(!fileName.toLowerCase().match(/\.(webp|jpg|jpeg|png)$/))continue;
+      const path=`${year}/${key}/${fileName}`;
+      const ex=allPhotos.find(x=>x.path===path);
+      if(ex){ex.handle=fileHandle;}
+      else{allPhotos.push({year,month,path,handle:fileHandle});meta.push({year,month,path});}
+    }
+    monthScanned.add(key);sortPhotos();saveMeta();
+  }catch(e){console.error('ensureMonthScanned',e);}
+}
+
+async function incrementalUpdate(handle){
+  if(!meta.length){await fullScan(handle);return;}
+  localStorage.setItem('rootName',handle.name);
+  const latestYear=Math.max(...meta.map(m=>m.year));
+  const latestMonth=Math.max(...meta.filter(m=>m.year===latestYear).map(m=>m.month));
+  monthScanned.delete(monthKey(latestYear,latestMonth));
+  setStatus('Checking for new photos…');
+  await ensureMonthScanned(latestYear,latestMonth);
+  setStatus(`${allPhotos.length} photos`);
+}
+
+/* ── LOAD IMAGE ── */
+async function loadImage(img,photo){
+  const cached=await getCachedThumb(photo.path);
+  if(cached){applyRotation(img,photo.path);img.src=cached;return;}
+  if(!photo.handle)await ensureMonthScanned(photo.year,photo.month);
+  if(!photo.handle)return;
+  try{
+    const file=await photo.handle.getFile();
+    img.src=URL.createObjectURL(file);
+    applyRotation(img,photo.path);
+    putCachedThumb(photo.path,file);
+  }catch(e){console.error('loadImage',photo.path,e);}
+}
+
+function applyRotation(img,path){
+  const deg=rotations[path]||0;
+  img.style.transform=deg?`rotate(${deg}deg)`:'';
+}
+
+/* ── CURRENT VISIBLE LIST (filtered) ── */
+function getFilteredList(){
+  let list=allPhotos.filter(p=>!deletedPaths.has(p.path));
+  if(viewMode.value==='favorites') list=list.filter(p=>favorites.has(p.path));
+  else if(viewMode.value!=='all'){
+    const album=albums[viewMode.value];
+    if(album) list=list.filter(p=>album.images.includes(p.path));
+  }
+  const q=searchInput.value.trim().toLowerCase();
+  if(q) list=list.filter(p=>p.path.toLowerCase().includes(q));
+  return list;
+}
+
+/* ── SINGLE SHARED LAZY-LOAD OBSERVER ── */
+// One observer for all images — far cheaper than one per image on mobile.
+const imgObserver=new IntersectionObserver(entries=>{
+  entries.forEach(entry=>{
+    if(!entry.isIntersecting)return;
+    const img=entry.target;
+    imgObserver.unobserve(img);
+    const path=img.dataset.lazyPath;
+    const photo=allPhotos.find(p=>p.path===path);
+    if(photo)loadImage(img,photo);
+  });
+},{rootMargin:'400px 0px'});
+
+/* monthKey -> last DOM node inserted for that month (O(1) tail appends) */
+const monthTailMap=new Map();
+
+/* ── INFINITE SCROLL RENDER ── */
+let loadingMore=false;
+
+function resetView(list){
+  visibleList=list!=null?list:getFilteredList();
+  loadedCount=0;
+  grid.innerHTML='';
+  monthTailMap.clear();
+  loadingMore=false;
+  requestAnimationFrame(loadMore);
+}
+
+function loadMore(){
+  if(loadingMore||loadedCount>=visibleList.length)return;
+  loadingMore=true;
+
+  const isMobile=window.innerWidth<768;
+  const batch=isMobile?20:40;
+  const start=loadedCount, end=Math.min(loadedCount+batch,visibleList.length);
+
+  for(let i=start;i<end;i++){
+    const p=visibleList[i];
+    if(deletedPaths.has(p.path))continue;
+    const key=monthKey(p.year,p.month);
+
+    // Month header — insert once per key, O(n headers) but headers are few.
+    if(!monthTailMap.has(key)){
+      const m=document.createElement('div');
+      m.className='month';
+      m.textContent=key;
+      m.dataset.month=key;
+      m.dataset.year=p.year;
+      let inserted=false;
+      for(const ex of grid.querySelectorAll('.month')){
+        if(ex.dataset.month<key){ex.before(m);inserted=true;break;}
+      }
+      if(!inserted)grid.appendChild(m);
+      monthTailMap.set(key,m);
+    }
+
+    const div=document.createElement('div');
+    div.className='item'+(rotations[p.path]?' rotated':'');
+    div.dataset.path=p.path;
+    div.style.contain='strict'; // skip layout of off-screen tiles
+
+    const img=document.createElement('img');
+    img.alt='';
+    img.dataset.lazyPath=p.path;
+    const idx=i; // capture for click
+    img.addEventListener('click',()=>openLightbox(idx),{passive:true});
+
+    const checkbox=document.createElement('input');
+    checkbox.type='checkbox';
+    checkbox.dataset.path=p.path;
+    checkbox.style.display=selectMode?'block':'none';
+    checkbox.onchange=()=>{
+      if(checkbox.checked)selectedPaths.add(p.path);
+      else selectedPaths.delete(p.path);
+      updateSelectionUI();
+    };
+
+    const favBtn=document.createElement('button');
+    favBtn.className='fav-btn'+(favorites.has(p.path)?' starred':'');
+    favBtn.textContent=favorites.has(p.path)?'★':'☆';
+    favBtn.title='Favorite';
+    favBtn.addEventListener('click',(e)=>{e.stopPropagation();toggleFavorite(p.path,favBtn);},{passive:false});
+
+    const delBtn=document.createElement('button');
+    delBtn.className='del-btn';
+    delBtn.textContent='✕';
+    delBtn.title='Delete photo';
+    delBtn.addEventListener('click',(e)=>{e.stopPropagation();softDeletePhoto(p.path,div);},{passive:false});
+
+    const rotBadge=document.createElement('span');
+    rotBadge.className='rot-badge';
+    rotBadge.textContent=(rotations[p.path]||0)+'°';
+
+    div.appendChild(img);
+    div.appendChild(checkbox);
+    div.appendChild(favBtn);
+    div.appendChild(delBtn);
+    div.appendChild(rotBadge);
+
+    // O(1) tail append — no sibling walking.
+    const tail=monthTailMap.get(key);
+    const next=tail.nextElementSibling;
+    if(next)next.before(div); else grid.appendChild(div);
+    monthTailMap.set(key,div);
+
+    imgObserver.observe(img);
+  }
+
+  loadedCount=end;
+  loadingMore=false;
+  setStatus(`${visibleList.filter(p=>!deletedPaths.has(p.path)).length} photos`);
+}
+
+// Wider rootMargin so mobile triggers load well before hitting the bottom.
+new IntersectionObserver(entries=>{
+  if(entries[0].isIntersecting)requestAnimationFrame(loadMore);
+},{rootMargin:'600px 0px'}).observe(sentinel);
+
+/* ── YEAR VIEW ── */
+function showYearAlbums(){
+  grid.innerHTML='';loadedCount=0;
+  const years=[...new Set(allPhotos.filter(p=>!deletedPaths.has(p.path)).map(p=>p.year))].sort((a,b)=>b-a);
+  years.forEach(year=>{
+    const cover=allPhotos.find(p=>p.year===year&&!deletedPaths.has(p.path));
+    const div=document.createElement('div');
+    div.className='item year-album';div.onclick=()=>openYear(year);
+    const img=document.createElement('img');img.loading='lazy';
+    if(cover)loadImage(img,cover);
+    div.appendChild(img);
+    const label=document.createElement('div');
+    label.className='year-label';label.textContent=year;
+    div.appendChild(label);
+    grid.appendChild(div);
+  });
+}
+
+function openYear(year){
+  currentYear=year;
+  resetView(allPhotos.filter(p=>p.year===year&&!deletedPaths.has(p.path)));
+  document.getElementById('backToYears').style.display='inline-flex';
+}
+
+document.getElementById('backToYears').onclick=()=>{
+  currentYear=null;showYearAlbums();
+  document.getElementById('backToYears').style.display='none';
+};
+
+/* ── LIGHTBOX ── */
+function openLightbox(index){
+  overlayIndex=index;
+  showLightboxPhoto();
+  overlay.style.display='flex';
+  overlayZoom=1;zoomSlider.value=1;overlayZoomPct.textContent='100%';
+  overlayImg.style.transform='scale(1)';
+}
+
+async function showLightboxPhoto(){
+  const p=visibleList[overlayIndex];
+  if(!p)return;
+  overlayTitle.textContent=p.path;
+  overlayCounter.textContent=`${overlayIndex+1} / ${visibleList.length}`;
+  overlayImg.src='';
+  overlayImg.style.transform=`scale(${overlayZoom}) rotate(${rotations[p.path]||0}deg)`;
+
+  // Update fav button
+  document.getElementById('oFav').textContent=favorites.has(p.path)?'★ Unfav':'⭐ Fav';
+  // Update rot label
+  const deg=rotations[p.path]||0;
+  overlayRot.style.display=deg?'inline':'none';
+  overlayRot.textContent=deg+'°';
+
+  const cached=await getCachedThumb(p.path);
+  if(cached){overlayImg.src=cached;return;}
+  if(!p.handle)await ensureMonthScanned(p.year,p.month);
+  if(!p.handle)return;
+  try{const file=await p.handle.getFile();overlayImg.src=URL.createObjectURL(file);}
+  catch(e){console.error(e);}
+}
+
+document.getElementById('navPrev').onclick=()=>{
+  if(overlayIndex>0){overlayIndex--;showLightboxPhoto();}
+};
+document.getElementById('navNext').onclick=()=>{
+  if(overlayIndex<visibleList.length-1){overlayIndex++;showLightboxPhoto();}
+};
+document.getElementById('oClose').onclick=closeOverlay;
+overlay.addEventListener('click',e=>{if(e.target===overlay)closeOverlay();});
+function closeOverlay(){overlay.style.display='none';overlayImg.src='';}
+
+// Keyboard navigation
+document.addEventListener('keydown',e=>{
+  if(overlay.style.display!=='flex')return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')document.getElementById('navPrev').click();
+  else if(e.key==='ArrowRight'||e.key==='ArrowDown')document.getElementById('navNext').click();
+  else if(e.key==='Escape')closeOverlay();
+  else if(e.key==='f'||e.key==='F')document.getElementById('oFav').click();
+  else if(e.key==='Delete')document.getElementById('oDelete').click();
+});
+
+/* ── ZOOM ── */
+zoomSlider.oninput=()=>{
+  overlayZoom=parseFloat(zoomSlider.value);
+  overlayZoomPct.textContent=Math.round(overlayZoom*100)+'%';
+  const p=visibleList[overlayIndex];
+  const deg=p?rotations[p.path]||0:0;
+  overlayImg.style.transform=`scale(${overlayZoom}) rotate(${deg}deg)`;
+};
+document.getElementById('oZoomIn').onclick=()=>{
+  overlayZoom=Math.min(4,+(overlayZoom+0.25).toFixed(2));
+  zoomSlider.value=overlayZoom;zoomSlider.dispatchEvent(new Event('input'));
+};
+document.getElementById('oZoomOut').onclick=()=>{
+  overlayZoom=Math.max(0.5,+(overlayZoom-0.25).toFixed(2));
+  zoomSlider.value=overlayZoom;zoomSlider.dispatchEvent(new Event('input'));
+};
+
+/* ── ROTATE ── */
+function rotatePath(path,dir){
+  const cur=rotations[path]||0;
+  rotations[path]=(cur+(dir===1?90:-90)+360)%360;
+  if(rotations[path]===0)delete rotations[path];
+  // Update all visible imgs with this path
+  document.querySelectorAll(`.item[data-path="${CSS.escape(path)}"] img`).forEach(img=>{
+    applyRotation(img,path);
+  });
+  document.querySelectorAll(`.item[data-path="${CSS.escape(path)}"] .rot-badge`).forEach(b=>{
+    b.textContent=(rotations[path]||0)+'°';
+  });
+  document.querySelectorAll(`.item[data-path="${CSS.escape(path)}"]`).forEach(item=>{
+    if(rotations[path])item.classList.add('rotated');
+    else item.classList.remove('rotated');
+  });
+  saveExtras();
+}
+
+document.getElementById('oRotLeft').onclick=()=>{
+  const p=visibleList[overlayIndex];if(!p)return;
+  rotatePath(p.path,-1);
+  const deg=rotations[p.path]||0;
+  overlayImg.style.transform=`scale(${overlayZoom}) rotate(${deg}deg)`;
+  overlayRot.style.display=deg?'inline':'none';
+  overlayRot.textContent=deg+'°';
+  showToast('Rotated left');
+};
+document.getElementById('oRotRight').onclick=()=>{
+  const p=visibleList[overlayIndex];if(!p)return;
+  rotatePath(p.path,1);
+  const deg=rotations[p.path]||0;
+  overlayImg.style.transform=`scale(${overlayZoom}) rotate(${deg}deg)`;
+  overlayRot.style.display=deg?'inline':'none';
+  overlayRot.textContent=deg+'°';
+  showToast('Rotated right');
+};
+
+/* ── FAVORITES ── */
+function toggleFavorite(path,btn){
+  if(favorites.has(path)){
+    favorites.delete(path);
+    if(btn){btn.textContent='☆';btn.classList.remove('starred');}
+    showToast('Removed from favorites');
+  }else{
+    favorites.add(path);
+    if(btn){btn.textContent='★';btn.classList.add('starred');}
+    showToast('Added to favorites ⭐');
+  }
+  saveExtras();
+}
+document.getElementById('oFav').onclick=()=>{
+  const p=visibleList[overlayIndex];if(!p)return;
+  // find btn in grid
+  const btn=document.querySelector(`.item[data-path="${CSS.escape(p.path)}"] .fav-btn`);
+  toggleFavorite(p.path,btn);
+  document.getElementById('oFav').textContent=favorites.has(p.path)?'★ Unfav':'⭐ Fav';
+};
+
+/* ── SOFT DELETE ── */
+function softDeletePhoto(path,div){
+  if(!confirm('Remove this photo from the gallery?\n(File on disk will NOT be deleted.)'))return;
+  deletedPaths.add(path);
+  selectedPaths.delete(path);
+  saveExtras();
+  if(div){
+    div.classList.add('deleting');
+    setTimeout(()=>div.remove(),320);
+  }
+  showToast('Photo hidden from gallery');
+  updateSelectionUI();
+}
+document.getElementById('oDelete').onclick=()=>{
+  const p=visibleList[overlayIndex];if(!p)return;
+  if(!confirm('Hide this photo from gallery?\n(Your file is safe on disk.)'))return;
+  deletedPaths.add(p.path);
+  saveExtras();
+  const div=document.querySelector(`.item[data-path="${CSS.escape(p.path)}"]`);
+  if(div){div.classList.add('deleting');setTimeout(()=>div.remove(),320);}
+  // Move to next photo
+  if(overlayIndex>=visibleList.length-1)closeOverlay();
+  else showLightboxPhoto();
+  showToast('Photo hidden');
+};
+
+/* ── DOWNLOAD ── */
+document.getElementById('oDownload').onclick=async()=>{
+  const p=visibleList[overlayIndex];if(!p)return;
+  if(!p.handle)await ensureMonthScanned(p.year,p.month);
+  if(!p.handle){showToast('File not available');return;}
+  try{
+    const file=await p.handle.getFile();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(file);
+    a.download=file.name;a.click();
+    showToast('Downloading…');
+  }catch(e){showToast('Download failed');}
+};
+
+/* ── SEARCH ── */
+document.getElementById('searchBtn').onclick=()=>{
+  searchWrap.classList.toggle('open');
+  if(searchWrap.classList.contains('open')){
+    mainScroll.classList.add('search-open');
+    searchInput.focus();
+  } else {
+    mainScroll.classList.remove('search-open');
+    searchInput.value='';
+    resetView();
+  }
+};
+document.getElementById('searchClose').onclick=()=>{
+  searchWrap.classList.remove('open');
+  mainScroll.classList.remove('search-open');
+  searchInput.value='';resetView();
+};
+let searchDebounce;
+searchInput.oninput=()=>{
+  clearTimeout(searchDebounce);
+  searchDebounce=setTimeout(()=>resetView(),280);
+};
+
+/* ── SLIDESHOW ── */
+let ssInterval=null,ssRunning=false;
+document.getElementById('slideshowBtn').onclick=()=>{
+  if(visibleList.length===0){showToast('No photos to slideshow');return;}
+  ssRunning=!ssRunning;
+  document.getElementById('slideshowBtn').classList.toggle('active',ssRunning);
+  if(ssRunning){
+    overlayIndex=0;openLightbox(0);
+    ssInterval=setInterval(()=>{
+      if(overlayIndex>=visibleList.length-1){stopSlideshow();return;}
+      overlayIndex++;showLightboxPhoto();
+    },3000);
+    showToast('Slideshow started — press ESC to stop');
+  }else{stopSlideshow();}
+};
+function stopSlideshow(){
+  ssRunning=false;clearInterval(ssInterval);
+  document.getElementById('slideshowBtn').classList.remove('active');
+}
+// Override ESC to also stop slideshow
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&ssRunning)stopSlideshow();
+},true);
+
+/* ── STATS ── */
+document.getElementById('statsBtn').onclick=()=>{
+  sidePanel.style.display=sidePanel.style.display==='block'?'none':'block';
+  if(albumsPanel.style.display==='block')albumsPanel.style.display='none';
+  if(sidePanel.style.display==='block')renderStats();
+};
+function renderStats(){
+  const total=allPhotos.length;
+  const active=allPhotos.filter(p=>!deletedPaths.has(p.path)).length;
+  const favCount=favorites.size;
+  const rotCount=Object.keys(rotations).length;
+  const yearCounts={};
+  allPhotos.forEach(p=>{if(!deletedPaths.has(p.path))yearCounts[p.year]=(yearCounts[p.year]||0)+1;});
+  const topYear=Object.entries(yearCounts).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('statsContent').innerHTML=`
+    <div class="side-stat"><span>Total photos</span><span>${total}</span></div>
+    <div class="side-stat"><span>Visible</span><span>${active}</span></div>
+    <div class="side-stat"><span>Hidden</span><span>${deletedPaths.size}</span></div>
+    <div class="side-stat"><span>Favorites ⭐</span><span>${favCount}</span></div>
+    <div class="side-stat"><span>Rotated</span><span>${rotCount}</span></div>
+    <div class="side-stat"><span>Albums</span><span>${Object.keys(albums).length}</span></div>
+    ${topYear?`<div class="side-stat"><span>Busiest year</span><span>${topYear[0]} (${topYear[1]})</span></div>`:''}
+    <br>
+    <button class="hbtn" onclick="restoreDeleted()" style="width:100%;margin-top:4px;">↩ Restore hidden photos</button>
+  `;
+}
+function restoreDeleted(){
+  if(!deletedPaths.size){showToast('Nothing hidden');return;}
+  const n=deletedPaths.size;
+  deletedPaths.clear();saveExtras();resetView();
+  showToast(`Restored ${n} photos`);
+}
+
+/* ── SELECTION ── */
+function updateSelectionUI(){
+  const n=selectedPaths.size;
+  selectedCountEl.textContent=`${n} selected`;
+  selectionBar.style.display=n>0?'flex':'none';
+}
+
+document.getElementById('selectModeBtn').onclick=()=>{
+  selectMode=!selectMode;selectedPaths.clear();updateSelectionUI();
+  document.getElementById('selectModeBtn').textContent=selectMode?'Cancel':'Select';
+  document.getElementById('selectModeBtn').classList.toggle('active',selectMode);
+  document.body.classList.toggle('select-mode',selectMode);
+  document.querySelectorAll('.item input[type="checkbox"]').forEach(cb=>{
+    cb.style.display=selectMode?'block':'none';cb.checked=false;
+  });
+};
+
+document.getElementById('clearSelBtn').onclick=()=>{
+  selectedPaths.clear();updateSelectionUI();
+  document.querySelectorAll('.item input[type="checkbox"]').forEach(cb=>{cb.checked=false;});
+};
+
+// Rotate selected
+document.getElementById('selRotLeft').onclick=()=>{
+  if(!selectedPaths.size){showToast('Nothing selected');return;}
+  selectedPaths.forEach(p=>rotatePath(p,-1));
+  showToast(`Rotated ${selectedPaths.size} photos left`);
+};
+document.getElementById('selRotRight').onclick=()=>{
+  if(!selectedPaths.size){showToast('Nothing selected');return;}
+  selectedPaths.forEach(p=>rotatePath(p,1));
+  showToast(`Rotated ${selectedPaths.size} photos right`);
+};
+
+// Favorite selected
+document.getElementById('selFavBtn').onclick=()=>{
+  if(!selectedPaths.size){showToast('Nothing selected');return;}
+  const allFaved=[...selectedPaths].every(p=>favorites.has(p));
+  selectedPaths.forEach(p=>{
+    if(allFaved)favorites.delete(p);else favorites.add(p);
+    const btn=document.querySelector(`.item[data-path="${CSS.escape(p)}"] .fav-btn`);
+    if(btn){btn.textContent=favorites.has(p)?'★':'☆';btn.classList.toggle('starred',favorites.has(p));}
+  });
+  saveExtras();
+  showToast(allFaved?'Removed from favorites':'Added to favorites ⭐');
+};
+
+// Delete selected
+document.getElementById('selDeleteBtn').onclick=()=>{
+  if(!selectedPaths.size){showToast('Nothing selected');return;}
+  if(!confirm(`Hide ${selectedPaths.size} photos from gallery?\n(Files on disk are safe.)`))return;
+  const toHide=[...selectedPaths];
+  toHide.forEach(p=>{
+    deletedPaths.add(p);
+    const div=document.querySelector(`.item[data-path="${CSS.escape(p)}"]`);
+    if(div){div.classList.add('deleting');setTimeout(()=>div.remove(),320);}
+  });
+  selectedPaths.clear();saveExtras();updateSelectionUI();
+  showToast(`${toHide.length} photos hidden`);
+};
+
+document.getElementById('saveAlbumBtn').onclick=()=>{
+  if(!selectedPaths.size){alert('No photos selected.');return;}
+  const name=albumNameInput.value.trim();
+  if(!name){alert('Enter an album name.');return;}
+  const id=name.toLowerCase().replace(/\s+/g,'_');
+  if(!albums[id])albums[id]={name,images:[]};
+  selectedPaths.forEach(p=>{if(!albums[id].images.includes(p))albums[id].images.push(p);});
+  localStorage.setItem('photoAlbums',JSON.stringify(albums));
+  albumsJsonEl.value=JSON.stringify(albums,null,2);
+  refreshViewModeOptions();
+  showToast(`Album "${name}" saved`);
+  selectedPaths.clear();updateSelectionUI();
+};
+
+/* ── VIEW MODE ── */
+viewMode.onchange=()=>{
+  if(viewMode.value==='all'){currentYear=null;showYearAlbums();document.getElementById('backToYears').style.display='none';}
+  else{resetView();}
+};
+
+/* ── ALBUMS PANEL ── */
+function loadAlbumsFromLocalStorage(){
+  const raw=localStorage.getItem('photoAlbums');
+  try{albums=raw?JSON.parse(raw):{};}catch{albums={};}
+  albumsJsonEl.value=JSON.stringify(albums,null,2);
+  refreshViewModeOptions();
+}
+function saveAlbumsFromTextarea(){
+  try{albums=JSON.parse(albumsJsonEl.value);localStorage.setItem('photoAlbums',JSON.stringify(albums));refreshViewModeOptions();showToast('Albums saved');}
+  catch(e){alert('Invalid JSON: '+e.message);}
+}
+function refreshViewModeOptions(){
+  const current=viewMode.value;
+  viewMode.innerHTML='<option value="all">All photos</option><option value="favorites">⭐ Favorites</option>';
+  for(const id in albums){
+    const opt=document.createElement('option');
+    opt.value=id;opt.textContent=albums[id].name||id;
+    viewMode.appendChild(opt);
+  }
+  if(viewMode.querySelector(`option[value="${current}"]`))viewMode.value=current;
+}
+
+document.getElementById('albumsBtn').onclick=()=>{
+  albumsPanel.style.display=albumsPanel.style.display==='block'?'none':'block';
+  if(sidePanel.style.display==='block')sidePanel.style.display='none';
+};
+document.getElementById('saveAlbums').onclick=saveAlbumsFromTextarea;
+document.getElementById('loadAlbums').onclick=loadAlbumsFromLocalStorage;
+document.getElementById('exportAlbums').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(albums,null,2)],{type:'application/json'}));
+  a.download='albums.json';document.body.appendChild(a);a.click();a.remove();
+};
+document.getElementById('importAlbums').onclick=()=>document.getElementById('importFile').click();
+document.getElementById('importFile').onchange=e=>{
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{albums=JSON.parse(r.result);localStorage.setItem('photoAlbums',JSON.stringify(albums));albumsJsonEl.value=JSON.stringify(albums,null,2);refreshViewModeOptions();showToast('Imported');}
+    catch(err){alert('Invalid JSON: '+err.message);}
+  };
+  r.readAsText(file);
+};
+
+/* ── HANDLE ── */
+async function activateHandle(handle){
+  rootHandle=handle;await idbPut(handle);
+  if(!meta.length)await fullScan(handle);else await incrementalUpdate(handle);
+  showYearAlbums();document.getElementById('backToYears').style.display='none';
+}
+document.getElementById('pickRoot').onclick=async()=>{
+  try{const handle=await window.showDirectoryPicker({startIn:'pictures',mode:'read'});await activateHandle(handle);}
+  catch(e){if(e.name!=='AbortError')console.error(e);}
+};
+
+/* ── RECONNECT ── */
+async function tryAutoReconnect(){
+  let handle;try{handle=await idbGet();}catch{return;}
+  if(!handle)return;
+  let perm='prompt';
+  try{perm=await handle.queryPermission({mode:'read'});}catch{}
+  if(perm==='granted'){
+    rootHandle=handle;setStatus('Reconnected ✓');
+    await incrementalUpdate(handle);showYearAlbums();
+  }else{
+    const name=localStorage.getItem('rootName')||'your photo folder';
+    document.getElementById('reconnectMsg').textContent=`Tap to reopen "${name}"`;
+    reconnectBanner.style.display='flex';
+    document.getElementById('reconnectBtn').onclick=async()=>{
+      try{
+        const granted=await handle.requestPermission({mode:'read'});
+        if(granted==='granted'){
+          reconnectBanner.style.display='none';rootHandle=handle;await idbPut(handle);
+          if(!meta.length)await fullScan(handle);else await incrementalUpdate(handle);showYearAlbums();
+        }
+      }catch(e){console.error(e);}
+    };
+    document.getElementById('reconnectPickNew').onclick=async()=>{
+      reconnectBanner.style.display='none';
+      try{const h=await window.showDirectoryPicker({startIn:'pictures',mode:'read'});await activateHandle(h);}catch{}
+    };
+  }
+}
+
+/* ── INIT ── */
+async function initialize(){
+  loadAlbumsFromLocalStorage();
+  loadExtras();
+  const hasMeta=loadMetaFromCache();
+  if(hasMeta&&allPhotos.length){setStatus(`${allPhotos.length} photos (cached)`);showYearAlbums();}
+  await tryAutoReconnect();
+}
+initialize();
+</script>
+</body>
+</html>
