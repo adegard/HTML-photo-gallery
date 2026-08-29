@@ -75,3 +75,7 @@ A lightweight, single-file HTML photo gallery that browses your local photos dir
 - **Delete** is a soft-delete (hides from gallery only). Original files on disk are never touched.
 - Favorites, rotations, and hidden state are saved in `localStorage` per browser.
 - Albums can be exported as JSON and imported on another browser/device.
+
+---
+
+For an overview of all my other projects, see https://adegard.github.io/blog/
